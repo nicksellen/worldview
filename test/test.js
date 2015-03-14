@@ -21,8 +21,12 @@ describe('world', function(){
     var unlisten = world.after(function(w){
       unlisten();
       assert.equal(w.k, 'v');
+
+      // too many ways to access it?
       assert.equal(world.get('k'), 'v');
+      assert.equal(world.at('k')(), 'v');
       assert.equal(world.at('k').get(), 'v');
+
       done();
     });
     world.update('k', 'v');

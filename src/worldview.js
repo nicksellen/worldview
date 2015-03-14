@@ -54,6 +54,11 @@ class World {
     pushInTree(this.pathListenersTree, path, '$$', fn);
     return () => {
       removeInTree(this.pathListenersTree, path, '$$', fn);
+      /* not ready yet
+      console.log('b4 cleanup', this.pathListenersTree);
+      cleanupInTree(this.pathListenersTree, path);
+      console.log('after', this.pathListenersTree);
+      */
     };
   }
 
@@ -187,18 +192,20 @@ function findScheduler() {
   }
 }
 
-function ensurePath(path) {
+function ensurePath(path, copy) {
   if (!path) return [];
   if (typeof path === 'string') {
     return path.split('.').filter(v => v);
-  } else {
+  } else if (copy) {
     return path.slice();
+  } else {
+    return path;
   }
 }
 
 function getIn(obj, path, checkedPath) {
   if (obj === undefined) return undefined;
-  if (!checkedPath) path = ensurePath(path);
+  if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return obj;
   if (obj instanceof Object) {
     return getIn(obj[path.shift()], path, true);
@@ -207,7 +214,7 @@ function getIn(obj, path, checkedPath) {
 }
 
 function setIn(obj, path, val, checkedPath) {
-  if (!checkedPath) path = ensurePath(path);
+  if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return val;
   if (path.length === 1) {
     var k = path.shift();
@@ -232,7 +239,7 @@ function setIn(obj, path, val, checkedPath) {
 }
 
 function ensureObjAt(obj, path, checkedPath) {
-  if (!checkedPath) path = ensurePath(path);
+  if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return obj;
   var k = path.shift();
   var nextObj = obj[k];
@@ -260,8 +267,24 @@ function removeInTree(obj, path, key, val) {
   if (typeof obj === 'object' && obj.hasOwnProperty(key)) {
     var idx = obj[key].indexOf(val);
     if (idx === -1) return;
-    obj[key].splice(idx, 1);
+    var ary = obj[key];
+    ary.splice(idx, 1);
+    if (ary.length === 0) {
+      delete obj[key];
+    }
   } 
+}
+
+// doesn't really work yet
+function cleanupInTree(obj, path, checkedPath) {
+  if (!checkedPath) path = ensurePath(path, true);
+  if (path.length === 0) return;
+  var k = path.shift();
+  var nextObj = obj[k];
+  cleanupInTree(nextObj, path, true);
+  if (Object.keys(nextObj).length === 0) {
+    delete obj[k];
+  }
 }
 
 function triggerListeners(previous, current, listeners, path) {
