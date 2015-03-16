@@ -6,9 +6,9 @@ class World {
     this.pendingUpdates = [];
     this.updating = false;
     this.scheduled =  false;
-    this.listeners = {};
-    this.pathValues = {};
-    this.afters = [];
+    this.preCommitListeners = {};
+    this.postCommitListeners = {};
+    this.afterCommitFns = [];
   }
 
   scheduleUpdate(fn) {
@@ -17,6 +17,10 @@ class World {
       this.scheduled = true;
       schedule(this.applyUpdates.bind(this));
     }
+  }
+
+  afterCommit(fn) {
+    this.afterCommitFns.push(fn);
   }
 
   applyUpdates() {
@@ -37,10 +41,15 @@ class World {
         }
 
         if (NEXT_STATE !== this.STATE) {
+          triggerListeners(this.STATE, NEXT_STATE, this.preCommitListeners);
           var PREVIOUS_STATE = this.STATE;
           this.STATE = NEXT_STATE;
-          triggerListeners(PREVIOUS_STATE, this.STATE, this.listeners);
-          this.afters.forEach(fn => fn(this.STATE));
+          triggerListeners(PREVIOUS_STATE, this.STATE, this.postCommitListeners);
+          if (this.afterCommitFns.length > 0) {
+            var fns = this.afterCommitFns;
+            this.afterCommitFns = [];
+            fns.forEach(fn => fn(this.STATE));
+          }
         }
 
       }
@@ -49,25 +58,22 @@ class World {
     }  
   }
 
-  addPathListener(path, fn) {
-    pushInTree(this.listeners, path, '$$', fn);
+  addPostCommitListener(path, fn) {
+    pushInTree(this.postCommitListeners, path, '$$', fn);
     var unlisten = () => {
-      removeInTree(this.listeners, path, '$$', fn);
+      removeInTree(this.postCommitListeners, path, '$$', fn);
     };
     fn.$$unlisten = unlisten;
     return unlisten;
   }
 
-  after(fn, sendInitial) {
-    this.afters.push(fn);
-    if (sendInitial) {
-      fn(this.STATE);
-    }
-    return () => {
-      var idx = this.afters.indexOf(fn);
-      if (idx === -1) return;
-      this.afters.splice(idx, 1);
+  addPreCommitListener(path, fn) {
+    pushInTree(this.preCommitListeners, path, '$$', fn);
+    var unlisten = () => {
+      removeInTree(this.preCommitListeners, path, '$$', fn);
     };
+    fn.$$unlisten = unlisten;
+    return unlisten;
   }
 
 }
@@ -107,14 +113,45 @@ function createWorldView(root, path) {
 
   merge(get, {
 
+    $root: root,
+
+    get: get,
+
+    listen() {
+      if (arguments.length === 1) {
+        var fn = arguments[0];
+        return root.addPostCommitListener(path, fn);
+      } else if (arguments.length === 2) {
+        var extraPath = ensurePath(arguments[0]);
+        var fn = arguments[1];
+        return root.addPostCommitListener(path.concat(extraPath), fn);
+      } else {
+        throw 'try listen(fn) or listen(path, fn)';
+      }
+    },
+
+
+    listenPre() {
+      if (arguments.length === 1) {
+        var fn = arguments[0];
+        return root.addPreCommitListener(path, fn);
+      } else if (arguments.length === 2) {
+        var extraPath = ensurePath(arguments[0]);
+        var fn = arguments[1];
+        return root.addPreCommitListener(path.concat(extraPath), fn);
+      } else {
+        throw 'try listen(fn) or listen(path, fn)';
+      }
+    },
+
     at(subpath){
       return createWorldView(root, path.concat(ensurePath(subpath)));
     },
 
-    get() {
-      return get.apply(this, arguments);
+    derive(fn) {
+      return createDerivedView(this, fn);
     },
-    
+
     update() {
       if (arguments.length === 1) {
         var newValue = arguments[0];
@@ -135,24 +172,63 @@ function createWorldView(root, path) {
         var extraPath = ensurePath(arguments[0]);
         updateValue(path.concat(extraPath), undefined);
       }
+    }
+
+  });
+
+  return get;
+}
+
+function createDerivedView(view, fn) {
+
+  var root = view.$root;
+
+  var currentValue;
+  var preCommitListeners = [];
+  var postCommitListeners = [];
+
+  update(view());
+  view.listenPre(update);
+
+  function get() {
+    return currentValue;
+  }
+
+  function update(value) {
+    var updatedValue = fn(value);
+    preCommitListeners.forEach(fn => fn(updatedValue));
+    currentValue = updatedValue;
+    root.afterCommit(() => {
+      postCommitListeners.forEach(fn => fn(updatedValue));
+    });
+  }
+
+  function addListener(fn, list) {
+    list.push(fn);
+    return () => {
+      var idx = list.indexOf(fn);
+      if (idx === -1) return;
+      list.splice(idx, 1);
+    };
+  }
+
+  merge(get, {
+
+    $root: root,
+
+    get: get,
+    
+    listen(fn) {
+      return addListener(fn, postCommitListeners);
     },
 
-    listen() {
-      if (arguments.length === 1) {
-        var fn = arguments[0];
-        return root.addPathListener(path, fn);
-      } else if (arguments.length === 2) {
-        var extraPath = ensurePath(arguments[0]);
-        var fn = arguments[1];
-        return root.addPathListener(path.concat(extraPath), fn);
-      } else {
-        throw 'try listen(fn) or listen(path, fn)';
-      }
+    listenPre(fn) {
+      return addListener(fn, preCommitListeners);
     },
-
-    after(fn) {
-      return root.after(fn);
-    } 
+    
+    derive(fn) {
+      return createDerivedView(get, fn);
+    }
 
   });
 

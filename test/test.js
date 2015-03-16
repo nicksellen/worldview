@@ -18,7 +18,7 @@ describe('world', function(){
   });
 
   it('you can update a value in it', function(done){
-    var unlisten = world.after(function(w){
+    var unlisten = world.listen(function(w){
       unlisten();
       assert.equal(w.k, 'v');
 
@@ -116,46 +116,39 @@ describe('world', function(){
     world.update('root can be a string!');
   });
 
-  it('does some stuff', function(done){
+  it('you can derive values', function(done){
 
     var view = world.at('a.nice.path');
 
-    var boo = calc(view, function(value){
-      console.log('calculating sthing');
+    var boo = view.derive(function(value){
       if (value === undefined) return;
       return 'we did something to [' + value + ']';
     });
+
+    var boo2 = boo.derive(function(value){
+      return 'even more: ' + value;
+    });
+
     assert.equal(boo(), undefined);
+    assert.equal(boo2(), 'even more: undefined');
 
     world.listen(function(current, previous, unlisten){
-      console.log('AAA world listening', current, previous, boo());
       unlisten();
       assert.equal(current.a.nice.path, 'val');
-      //assert.equal(boo(), 'we did something to [val2]');
+      assert.equal(boo(), 'we did something to [val]');
+      assert.equal(boo2(), 'even more: ' + boo());
       done();
     });
 
+    var first = true;
     world.listen('a.nice.path', function(value){
-      console.log('view set to', value);
+      if (first) {
+        assert.equal(value, 'val');
+      }
+      first = false;
     });
 
-    //world.update('a.nice.path', 'val');
     view.update('val');
   });
 
 });
-
-function calc(view, fn) {
-  var currentValue = set(view());
-  view.listen1(function(value){
-    console.log('view listen', value);
-    set(value);
-  });
-  function set(value) {
-    currentValue = fn(value);
-    console.log('updated calc with', value, 'to', currentValue);
-  }
-  return function(){
-    return currentValue;
-  };
-}

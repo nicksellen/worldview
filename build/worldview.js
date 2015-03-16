@@ -12,9 +12,9 @@ var World = (function () {
     this.pendingUpdates = [];
     this.updating = false;
     this.scheduled = false;
-    this.listeners = {};
-    this.pathValues = {};
-    this.afters = [];
+    this.preCommitListeners = {};
+    this.postCommitListeners = {};
+    this.afterCommitFns = [];
   }
 
   _createClass(World, {
@@ -25,6 +25,11 @@ var World = (function () {
           this.scheduled = true;
           schedule(this.applyUpdates.bind(this));
         }
+      }
+    },
+    afterCommit: {
+      value: function afterCommit(fn) {
+        this.afterCommitFns.push(fn);
       }
     },
     applyUpdates: {
@@ -48,12 +53,17 @@ var World = (function () {
             }
 
             if (NEXT_STATE !== this.STATE) {
+              triggerListeners(this.STATE, NEXT_STATE, this.preCommitListeners);
               var PREVIOUS_STATE = this.STATE;
               this.STATE = NEXT_STATE;
-              triggerListeners(PREVIOUS_STATE, this.STATE, this.listeners);
-              this.afters.forEach(function (fn) {
-                return fn(_this.STATE);
-              });
+              triggerListeners(PREVIOUS_STATE, this.STATE, this.postCommitListeners);
+              if (this.afterCommitFns.length > 0) {
+                var fns = this.afterCommitFns;
+                this.afterCommitFns = [];
+                fns.forEach(function (fn) {
+                  return fn(_this.STATE);
+                });
+              }
             }
           }
         } finally {
@@ -61,31 +71,28 @@ var World = (function () {
         }
       }
     },
-    addPathListener: {
-      value: function addPathListener(path, fn) {
+    addPostCommitListener: {
+      value: function addPostCommitListener(path, fn) {
         var _this = this;
 
-        pushInTree(this.listeners, path, "$$", fn);
+        pushInTree(this.postCommitListeners, path, "$$", fn);
         var unlisten = function () {
-          removeInTree(_this.listeners, path, "$$", fn);
+          removeInTree(_this.postCommitListeners, path, "$$", fn);
         };
         fn.$$unlisten = unlisten;
         return unlisten;
       }
     },
-    after: {
-      value: function after(fn, sendInitial) {
+    addPreCommitListener: {
+      value: function addPreCommitListener(path, fn) {
         var _this = this;
 
-        this.afters.push(fn);
-        if (sendInitial) {
-          fn(this.STATE);
-        }
-        return function () {
-          var idx = _this.afters.indexOf(fn);
-          if (idx === -1) return;
-          _this.afters.splice(idx, 1);
+        pushInTree(this.preCommitListeners, path, "$$", fn);
+        var unlisten = function () {
+          removeInTree(_this.preCommitListeners, path, "$$", fn);
         };
+        fn.$$unlisten = unlisten;
+        return unlisten;
       }
     }
   });
@@ -132,23 +139,43 @@ function createWorldView(root, path) {
 
   merge(get, {
 
+    $root: root,
+
+    get: get,
+
+    listen: function listen() {
+      if (arguments.length === 1) {
+        var fn = arguments[0];
+        return root.addPostCommitListener(path, fn);
+      } else if (arguments.length === 2) {
+        var extraPath = ensurePath(arguments[0]);
+        var fn = arguments[1];
+        return root.addPostCommitListener(path.concat(extraPath), fn);
+      } else {
+        throw "try listen(fn) or listen(path, fn)";
+      }
+    },
+
+    listenPre: function listenPre() {
+      if (arguments.length === 1) {
+        var fn = arguments[0];
+        return root.addPreCommitListener(path, fn);
+      } else if (arguments.length === 2) {
+        var extraPath = ensurePath(arguments[0]);
+        var fn = arguments[1];
+        return root.addPreCommitListener(path.concat(extraPath), fn);
+      } else {
+        throw "try listen(fn) or listen(path, fn)";
+      }
+    },
+
     at: function at(subpath) {
       return createWorldView(root, path.concat(ensurePath(subpath)));
     },
 
-    get: (function (_get) {
-      var _getWrapper = function get() {
-        return _get.apply(this, arguments);
-      };
-
-      _getWrapper.toString = function () {
-        return _get.toString();
-      };
-
-      return _getWrapper;
-    })(function () {
-      return get.apply(this, arguments);
-    }),
+    derive: function derive(fn) {
+      return createDerivedView(this, fn);
+    },
 
     update: function update() {
       if (arguments.length === 1) {
@@ -170,23 +197,66 @@ function createWorldView(root, path) {
         var extraPath = ensurePath(arguments[0]);
         updateValue(path.concat(extraPath), undefined);
       }
+    }
+
+  });
+
+  return get;
+}
+
+function createDerivedView(view, fn) {
+
+  var root = view.$root;
+
+  var currentValue;
+  var preCommitListeners = [];
+  var postCommitListeners = [];
+
+  update(view());
+  view.listenPre(update);
+
+  function get() {
+    return currentValue;
+  }
+
+  function update(value) {
+    var updatedValue = fn(value);
+    preCommitListeners.forEach(function (fn) {
+      return fn(updatedValue);
+    });
+    currentValue = updatedValue;
+    root.afterCommit(function () {
+      postCommitListeners.forEach(function (fn) {
+        return fn(updatedValue);
+      });
+    });
+  }
+
+  function addListener(fn, list) {
+    list.push(fn);
+    return function () {
+      var idx = list.indexOf(fn);
+      if (idx === -1) return;
+      list.splice(idx, 1);
+    };
+  }
+
+  merge(get, {
+
+    $root: root,
+
+    get: get,
+
+    listen: function listen(fn) {
+      return addListener(fn, postCommitListeners);
     },
 
-    listen: function listen() {
-      if (arguments.length === 1) {
-        var fn = arguments[0];
-        return root.addPathListener(path, fn);
-      } else if (arguments.length === 2) {
-        var extraPath = ensurePath(arguments[0]);
-        var fn = arguments[1];
-        return root.addPathListener(path.concat(extraPath), fn);
-      } else {
-        throw "try listen(fn) or listen(path, fn)";
-      }
+    listenPre: function listenPre(fn) {
+      return addListener(fn, preCommitListeners);
     },
 
-    after: function after(fn) {
-      return root.after(fn);
+    derive: function derive(fn) {
+      return createDerivedView(get, fn);
     }
 
   });
