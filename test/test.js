@@ -160,17 +160,17 @@ describe('root', function(){
     var here = root.at('things.here');
     var there = root.at('things.there');
 
-    var compound = root.compound(here, there);
+    var compound = root.compound({ a: here, b: there });
 
     compound.listen(function(vals, oldVals, unlisten) {
       unlisten();
-      assert.equal(oldVals[0], undefined);
-      assert.equal(oldVals[1], undefined);
-      assert.equal(vals[0], 'this is here');
-      assert.equal(vals[1], 'this is there');
+      assert.equal(oldVals.a, undefined);
+      assert.equal(oldVals.b, undefined);
+      assert.equal(vals.a, 'this is here');
+      assert.equal(vals.b, 'this is there');
       var getVals = compound();
-      assert.equal(getVals[0], 'this is here');
-      assert.equal(getVals[1], 'this is there');
+      assert.equal(getVals.a, 'this is here');
+      assert.equal(getVals.b, 'this is there');
       done();
     });
 
@@ -180,31 +180,57 @@ describe('root', function(){
 
   it('you can derive values from compounds', function(done){
 
-    var compound = root.compound('what.path.now', 'or.something.else');
+    var compound = root.compound({
+      a: 'what.path.now', 
+      b: 'or.something.else'
+    });
     
+    // derived from compound...
     var derived = compound.derive(function(vals){
-      return vals.concat(['added this in derive']);
+      return {
+        a: vals.a,
+        b: vals.b,
+        c: 'added this in derive'
+      }
+    });
+
+    // compound from derived...
+    var c2 = root.compound({
+      d: derived,
+      e: root.at('inside.e')
+    });
+
+    var called = 0;
+
+    var unlistenc2 = c2.listen(function(omg){
+      unlistenc2();
+      assert.equal(omg.d.a, 'a');
+      assert.equal(omg.d.b, 'b');
+      assert.equal(omg.d.c, 'added this in derive');
+      assert.equal(omg.e, 'this is e');
+      if (++called === 2) done();
     });
 
     var unlisten = derived.listen(function(alltogether, previous){
       unlisten();
       var w = root();
-      assert.equal(alltogether.length, 3);
-      assert.equal(alltogether[0], 'a');
-      assert.equal(alltogether[1], 'b');
-      assert.equal(alltogether[2], 'added this in derive');
+      assert.equal(Object.keys(alltogether).length, 3);
+      assert.equal(alltogether.a, 'a');
+      assert.equal(alltogether.b, 'b');
+      assert.equal(alltogether.c, 'added this in derive');
       assert.equal(w.what.path.now, 'a');
       assert.equal(w.or.something['else'], 'b');
-      assert.equal(compound()[0], 'a');
-      assert.equal(compound()[1], 'b');
-      assert.equal(derived()[0], 'a');
-      assert.equal(derived()[1], 'b');
-      assert.equal(derived()[2], 'added this in derive');
-      done();
+      assert.equal(compound().a, 'a');
+      assert.equal(compound().b, 'b');
+      assert.equal(derived().a, 'a');
+      assert.equal(derived().b, 'b');
+      assert.equal(derived().c, 'added this in derive');
+      if (++called === 2) done();
     });
 
     root.update('what.path.now', 'a');
     root.update('or.something.else', 'b');
+    root.update('inside.e', 'this is e');
 
   });
 

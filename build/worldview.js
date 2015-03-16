@@ -225,27 +225,34 @@ function createWritableView(world, path) {
   return view;
 }
 
-function createCompoundView(world, views) {
+function createCompoundView(world, specs) {
 
   var preCommitListeners = [];
   var postCommitListeners = [];
 
   var updated = false;
-  var len = views.length;
-  var values = new Array(len);
+
+  var keys = Object.keys(specs);
+
+  var values = createInitialValues();
   var oldValues;
+
   var i = 0;
-  views.forEach(function (view) {
-    var idx = i++;
-    values[idx] = view(); // initial value
+  keys.forEach(function (k) {
+    var view = specs[k];
+
+    values[k] = view(); // initial value
 
     view.listen.pre(function (val) {
 
       if (!updated) {
+
+        // ok, at least one of the things updated...
+
         updated = true;
 
         oldValues = values;
-        values = new Array(len);
+        values = createInitialValues();
 
         if (preCommitListeners.length > 0) {
           world.beforeCommit(function () {
@@ -263,9 +270,17 @@ function createCompoundView(world, views) {
         });
       }
 
-      values[idx] = val;
+      values[k] = val;
     });
   });
+
+  function createInitialValues() {
+    var obj = {};
+    keys.forEach(function (k) {
+      obj[k] = undefined;
+    });
+    return obj;
+  }
 
   function get() {
     return values;
@@ -388,16 +403,16 @@ var DEFAULT_WORLD = new World();
 
 function createRoot(world) {
   var root = createWritableView(world, []);
-  root.compound = function () {
-    var views = [];
-    for (var i = 0; i < arguments.length; i++) {
-      var view = arguments[i];
+  root.compound = function (specs) {
+
+    Object.keys(specs).forEach(function (k) {
+      var view = specs[k];
       if (typeof view === "string") {
-        view = createReadOnlyView(world, view);
+        specs[k] = createReadOnlyView(world, view);
       }
-      views.push(view);
-    }
-    return createCompoundView(world, views);
+    });
+
+    return createCompoundView(world, specs);
   };
   return root;
 }
