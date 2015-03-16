@@ -12,6 +12,7 @@ class World {
     this.scheduled =  false;
     this.preCommitListeners = {};
     this.postCommitListeners = {};
+    this.beforeCommitFns = [];
     this.afterCommitFns = [];
   }
 
@@ -21,6 +22,10 @@ class World {
       this.scheduled = true;
       schedule(this.applyUpdates.bind(this));
     }
+  }
+
+  beforeCommit(fn) {
+    this.beforeCommitFns.push(fn);
   }
 
   afterCommit(fn) {
@@ -45,15 +50,26 @@ class World {
         }
 
         if (NEXT_STATE !== this.STATE) {
+
           triggerListeners(this.STATE, NEXT_STATE, this.preCommitListeners);
+
+          if (this.beforeCommitFns.length > 0) {
+            var fns = this.beforeCommitFns;
+            this.beforeCommitFns = [];
+            fns.forEach(fn => fn(NEXT_STATE));
+          }
+
           var PREVIOUS_STATE = this.STATE;
-          this.STATE = NEXT_STATE;
+          this.STATE = NEXT_STATE; // commit!
+
           triggerListeners(PREVIOUS_STATE, this.STATE, this.postCommitListeners);
+
           if (this.afterCommitFns.length > 0) {
             var fns = this.afterCommitFns;
             this.afterCommitFns = [];
             fns.forEach(fn => fn(this.STATE));
           }
+
         }
 
       }
@@ -65,7 +81,7 @@ class World {
   addListener(path, fn, type) {
     var list = type === PRE_COMMIT ? this.preCommitListeners : this.postCommitListeners;
     pushInTree(list, path, '$$', fn);
-    var unlisten = () => {
+    function unlisten() {
       removeInTree(list, path, '$$', fn);
     };
     fn.$$unlisten = unlisten;
@@ -74,26 +90,26 @@ class World {
 
 }
 
-function createReadOnlyView(root, path) {
+function createReadOnlyView(world, path) {
 
   path = ensurePath(path);
 
   function get(subpath){
     if (subpath) {
-      return getIn(root.STATE, path.concat(ensurePath(subpath)));
+      return getIn(world.STATE, path.concat(ensurePath(subpath)));
     } else {
-      return getIn(root.STATE, path);
+      return getIn(world.STATE, path);
     }
   }
 
   function addListener(args, type) {
     if (args.length === 1) {
       var fn = args[0];
-      return root.addListener(path, fn, type);
+      return world.addListener(path, fn, type);
     } else if (args.length === 2) {
       var extraPath = ensurePath(args[0]);
       var fn = args[1];
-      return root.addListener(path.concat(extraPath), fn, type);
+      return world.addListener(path.concat(extraPath), fn, type);
     } else {
       throw 'this accepts 1 or 2 arguments, not ' + arguments.length;
     }
@@ -109,12 +125,12 @@ function createReadOnlyView(root, path) {
 
   merge(get, {
 
-    $root: root,
+    $world: world,
     get: get,
     listen: listen,
 
     at(subpath){
-      return createReadOnlyView(root, path.concat(ensurePath(subpath)));
+      return createReadOnlyView(world, path.concat(ensurePath(subpath)));
     },
 
     derive(fn) {
@@ -126,28 +142,28 @@ function createReadOnlyView(root, path) {
   return get;
 }
 
-function createWritableView(root, path) {
+function createWritableView(world, path) {
 
-  var view = createReadOnlyView(root, path);
+  var view = createReadOnlyView(world, path);
 
-  function updateValue(updatePath, updateValue) {
-    if (typeof updateValue === 'function') {
-      var fn = updateValue;
+  function updateValue(updatePath, updatedValue) {
+    if (typeof updatedValue === 'function') {
+      var fn = updatedValue;
       if (fn.length === 0) {
-        root.scheduleUpdate(state => updateIn(state, updatePath, fn()));
+        world.scheduleUpdate(state => updateIn(state, updatePath, fn()));
       } else {
         // the fn wants the previous state value passed in
-        root.scheduleUpdate(state => {
+        world.scheduleUpdate(state => {
           var stateValue = getIn(state, updatePath);
-          var updateValue = fn(stateValue);
-          if (updateValue !== stateValue) {
-            return updateIn(state, updatePath, updateValue); 
+          var updatedValue = fn(stateValue);
+          if (updatedValue !== stateValue) {
+            return updateIn(state, updatePath, updatedValue); 
           }
           return state;
         });
       }
     } else {
-      root.scheduleUpdate(state => updateIn(state, updatePath, updateValue));
+      world.scheduleUpdate(state => updateIn(state, updatePath, updatedValue));
     }
   }
 
@@ -155,12 +171,12 @@ function createWritableView(root, path) {
     
     update() {
       if (arguments.length === 1) {
-        var updateValue = arguments[0];
-        updateValue(path, updateValue);
+        var updatedValue = arguments[0];
+        updateValue(path, updatedValue);
       } else if (arguments.length === 2) {
         var extraPath = ensurePath(arguments[0]);
-        var updateValue = arguments[1];
-        updateValue(path.concat(extraPath), updateValue);
+        var updatedValue = arguments[1];
+        updateValue(path.concat(extraPath), updatedValue);
       } else {
         throw 'try update(value) or update(path, value)';
       }
@@ -178,7 +194,7 @@ function createWritableView(root, path) {
     },
 
     writableAt(subpath){
-      return createWritableView(root, path.concat(ensurePath(subpath)));
+      return createWritableView(world, path.concat(ensurePath(subpath)));
     }
 
   });
@@ -186,11 +202,98 @@ function createWritableView(root, path) {
   return view;
 }
 
+function createCompoundView(world, views) {
+
+  var preCommitListeners = [];
+  var postCommitListeners = [];
+
+  var updated = false;
+  var len = views.length;
+  var values = new Array(len);
+  var oldValues;
+  var i = 0;
+  views.forEach(view => {
+    var idx = i++;
+    values[idx] = view(); // initial value
+
+    view.listen.pre(val => {
+
+      if (!updated) {
+        updated = true;
+
+        oldValues = values;
+        values = new Array(len);
+
+        if (preCommitListeners.length > 0) {
+          world.beforeCommit(() => {
+            preCommitListeners.forEach(fn => {
+              fn(values, oldValues, fn.$$unlisten);
+            });  
+          });
+        }
+
+        world.afterCommit(() => {
+          updated = false;
+          postCommitListeners.forEach(fn => {
+            fn(values, oldValues, fn.$$unlisten);
+          });
+        });
+
+      }
+
+      values[idx] = val;
+
+    });
+
+  });
+
+  function get() {
+    return values;
+  }
+
+  function listen(fn) {
+    postCommitListeners.push(fn);
+    function unlisten() {
+      listRemove(postCommitListeners, fn);
+    }
+    fn.$$unlisten = unlisten;
+    return unlisten;
+  }
+
+  listen.pre = fn => {
+    preCommitListeners.push(fn);
+    function unlisten() {
+      listRemove(preCommitListeners, fn);
+    }
+    fn.$$unlisten = unlisten;
+    return unlisten;
+  };
+
+  merge(get,{
+    $world: world,
+    get: get,
+    listen: listen,
+
+    derive(fn) {
+      return createDerivedView(get, fn);
+    }
+
+  });
+
+  return get;
+
+}
+
 function createDerivedView(view, fn) {
 
-  var root = view.$root;
+  var world = view.$world;
 
-  var currentValue;
+  var currentValue = undefined;
+  var previousValue = undefined;
+  var updatedValue = undefined;
+
+  var setAfterCommit = false;
+
   var preCommitListeners = [];
   var postCommitListeners = [];
 
@@ -202,12 +305,30 @@ function createDerivedView(view, fn) {
   }
 
   function update(value) {
-    var updatedValue = fn(value);
-    preCommitListeners.forEach(fn => fn(updatedValue));
-    currentValue = updatedValue;
-    root.afterCommit(() => {
-      postCommitListeners.forEach(fn => fn(updatedValue));
+
+    // as this gets called in pre commit, it can be called
+    // multiple times within one commit transaction...
+    // hence needing to store these update values outside
+    // the fn
+
+    previousValue = currentValue;
+    updatedValue = fn(value);
+
+    preCommitListeners.forEach(fn => {
+      fn(updatedValue, previousValue);
     });
+
+    currentValue = updatedValue;
+
+    if (!setAfterCommit) {
+      setAfterCommit = true;
+      world.afterCommit(() => {
+        postCommitListeners.forEach(fn => fn(updatedValue, previousValue));
+        updatedValue = undefined;
+        setAfterCommit = false;
+      });
+    }
+
   }
 
   function addListener(fn, type) {
@@ -226,7 +347,7 @@ function createDerivedView(view, fn) {
 
   merge(get, {
 
-    $root: root,
+    $world: world,
     get: get,
     listen: listen,
 
@@ -243,7 +364,23 @@ const schedule = findScheduler();
 
 const DEFAULT_WORLD = new World();
 
-export default createWritableView(DEFAULT_WORLD, []);
+function createRoot(world) {
+  var root = createWritableView(world, []);
+  root.compound = function(){
+    var views = [];
+    for (var i = 0; i < arguments.length; i++) {
+      var view = arguments[i];
+      if (typeof view === 'string') {
+        view = createReadOnlyView(world, view);
+      }
+      views.push(view);
+    }
+    return createCompoundView(world, views);
+  };
+  return root;
+}
+
+export default createRoot(DEFAULT_WORLD);
 
 function findScheduler() {
   var scheduler;
@@ -282,7 +419,7 @@ function listRemove(list, item) {
 }
 
 function getIn(obj, path, checkedPath) {
-  if (obj === undefined) return;
+  if (obj === undefined) return undefined;
   if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return obj;
   if (obj instanceof Object) {
@@ -344,7 +481,7 @@ function removeInTree(obj, path, key, val, checkedPath) {
   if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) {
     if (obj.hasOwnProperty(key)) {
-      if (listRemove(obj[key], val) === LIST_EMPTY)) {
+      if (listRemove(obj[key], val) === LIST_EMPTY) {
         delete obj[key];
         return true;
       }
@@ -375,8 +512,8 @@ function triggerListeners(previous, current, listeners, path) {
                          currentIsObject ? current[k] : undefined,
                          listeners[k],
                          path.concat([k]));
-      }
-    });
+      });
+    }
   }
 }
 
