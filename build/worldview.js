@@ -4,6 +4,9 @@ var _createClass = (function () { function defineProperties(target, props) { for
 
 var _classCallCheck = function (instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } };
 
+var PRE_COMMIT = new Object();
+var POST_COMMIT = new Object();
+
 var World = (function () {
   function World() {
     _classCallCheck(this, World);
@@ -71,25 +74,12 @@ var World = (function () {
         }
       }
     },
-    addPostCommitListener: {
-      value: function addPostCommitListener(path, fn) {
-        var _this = this;
-
-        pushInTree(this.postCommitListeners, path, "$$", fn);
+    addListener: {
+      value: function addListener(path, fn, type) {
+        var list = type === PRE_COMMIT ? this.preCommitListeners : this.postCommitListeners;
+        pushInTree(list, path, "$$", fn);
         var unlisten = function () {
-          removeInTree(_this.postCommitListeners, path, "$$", fn);
-        };
-        fn.$$unlisten = unlisten;
-        return unlisten;
-      }
-    },
-    addPreCommitListener: {
-      value: function addPreCommitListener(path, fn) {
-        var _this = this;
-
-        pushInTree(this.preCommitListeners, path, "$$", fn);
-        var unlisten = function () {
-          removeInTree(_this.preCommitListeners, path, "$$", fn);
+          removeInTree(list, path, "$$", fn);
         };
         fn.$$unlisten = unlisten;
         return unlisten;
@@ -100,7 +90,7 @@ var World = (function () {
   return World;
 })();
 
-function createWorldView(root, path) {
+function createReadOnlyView(root, path) {
 
   path = ensurePath(path);
 
@@ -111,6 +101,50 @@ function createWorldView(root, path) {
       return getIn(root.STATE, path);
     }
   }
+
+  function addListener(args, type) {
+    if (args.length === 1) {
+      var fn = args[0];
+      return root.addListener(path, fn, type);
+    } else if (args.length === 2) {
+      var extraPath = ensurePath(args[0]);
+      var fn = args[1];
+      return root.addListener(path.concat(extraPath), fn, type);
+    } else {
+      throw "this accepts 1 or 2 arguments, not " + arguments.length;
+    }
+  }
+
+  function listen() {
+    return addListener(arguments, POST_COMMIT);
+  }
+
+  listen.pre = function () {
+    return addListener(arguments, PRE_COMMIT);
+  };
+
+  merge(get, {
+
+    $root: root,
+    get: get,
+    listen: listen,
+
+    at: function at(subpath) {
+      return createReadOnlyView(root, path.concat(ensurePath(subpath)));
+    },
+
+    derive: function derive(fn) {
+      return createDerivedView(this, fn);
+    }
+
+  });
+
+  return get;
+}
+
+function createWritableView(root, path) {
+
+  var view = createReadOnlyView(root, path);
 
   function updateValue(updatePath, newValue) {
     if (typeof newValue === "function") {
@@ -137,45 +171,7 @@ function createWorldView(root, path) {
     }
   }
 
-  merge(get, {
-
-    $root: root,
-
-    get: get,
-
-    listen: function listen() {
-      if (arguments.length === 1) {
-        var fn = arguments[0];
-        return root.addPostCommitListener(path, fn);
-      } else if (arguments.length === 2) {
-        var extraPath = ensurePath(arguments[0]);
-        var fn = arguments[1];
-        return root.addPostCommitListener(path.concat(extraPath), fn);
-      } else {
-        throw "try listen(fn) or listen(path, fn)";
-      }
-    },
-
-    listenPre: function listenPre() {
-      if (arguments.length === 1) {
-        var fn = arguments[0];
-        return root.addPreCommitListener(path, fn);
-      } else if (arguments.length === 2) {
-        var extraPath = ensurePath(arguments[0]);
-        var fn = arguments[1];
-        return root.addPreCommitListener(path.concat(extraPath), fn);
-      } else {
-        throw "try listen(fn) or listen(path, fn)";
-      }
-    },
-
-    at: function at(subpath) {
-      return createWorldView(root, path.concat(ensurePath(subpath)));
-    },
-
-    derive: function derive(fn) {
-      return createDerivedView(this, fn);
-    },
+  merge(view, {
 
     update: function update() {
       if (arguments.length === 1) {
@@ -196,12 +192,18 @@ function createWorldView(root, path) {
       } else if (arguments.length === 1) {
         var extraPath = ensurePath(arguments[0]);
         updateValue(path.concat(extraPath), undefined);
+      } else {
+        throw "try clear() or clear(path)";
       }
+    },
+
+    writableAt: function writableAt(subpath) {
+      return createWritableView(root, path.concat(ensurePath(subpath)));
     }
 
   });
 
-  return get;
+  return view;
 }
 
 function createDerivedView(view, fn) {
@@ -213,7 +215,7 @@ function createDerivedView(view, fn) {
   var postCommitListeners = [];
 
   update(view());
-  view.listenPre(update);
+  view.listen.pre(update);
 
   function get() {
     return currentValue;
@@ -232,7 +234,8 @@ function createDerivedView(view, fn) {
     });
   }
 
-  function addListener(fn, list) {
+  function addListener(fn, type) {
+    var list = type === PRE_COMMIT ? preCommitListeners : postCommitListeners;
     list.push(fn);
     return function () {
       var idx = list.indexOf(fn);
@@ -241,19 +244,19 @@ function createDerivedView(view, fn) {
     };
   }
 
+  function listen(fn) {
+    return addListener(fn, POST_COMMIT);
+  }
+
+  listen.pre = function (fn) {
+    return addListener(fn, PRE_COMMIT);
+  };
+
   merge(get, {
 
     $root: root,
-
     get: get,
-
-    listen: function listen(fn) {
-      return addListener(fn, postCommitListeners);
-    },
-
-    listenPre: function listenPre(fn) {
-      return addListener(fn, preCommitListeners);
-    },
+    listen: listen,
 
     derive: function derive(fn) {
       return createDerivedView(get, fn);
@@ -268,7 +271,7 @@ var schedule = findScheduler();
 
 var DEFAULT_WORLD = new World();
 
-module.exports = createWorldView(DEFAULT_WORLD, []);
+module.exports = createWritableView(DEFAULT_WORLD, []);
 
 function findScheduler() {
   var scheduler;

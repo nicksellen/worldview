@@ -1,4 +1,7 @@
 
+const PRE_COMMIT = new Object();
+const POST_COMMIT = new Object();
+
 class World {
 
   constructor() {
@@ -58,19 +61,11 @@ class World {
     }  
   }
 
-  addPostCommitListener(path, fn) {
-    pushInTree(this.postCommitListeners, path, '$$', fn);
+  addListener(path, fn, type) {
+    var list = type === PRE_COMMIT ? this.preCommitListeners : this.postCommitListeners;
+    pushInTree(list, path, '$$', fn);
     var unlisten = () => {
-      removeInTree(this.postCommitListeners, path, '$$', fn);
-    };
-    fn.$$unlisten = unlisten;
-    return unlisten;
-  }
-
-  addPreCommitListener(path, fn) {
-    pushInTree(this.preCommitListeners, path, '$$', fn);
-    var unlisten = () => {
-      removeInTree(this.preCommitListeners, path, '$$', fn);
+      removeInTree(list, path, '$$', fn);
     };
     fn.$$unlisten = unlisten;
     return unlisten;
@@ -78,7 +73,7 @@ class World {
 
 }
 
-function createWorldView(root, path) {
+function createReadOnlyView(root, path) {
 
   path = ensurePath(path);
 
@@ -89,6 +84,50 @@ function createWorldView(root, path) {
       return getIn(root.STATE, path);
     }
   }
+
+  function addListener(args, type) {
+    if (args.length === 1) {
+      var fn = args[0];
+      return root.addListener(path, fn, type);
+    } else if (args.length === 2) {
+      var extraPath = ensurePath(args[0]);
+      var fn = args[1];
+      return root.addListener(path.concat(extraPath), fn, type);
+    } else {
+      throw 'this accepts 1 or 2 arguments, not ' + arguments.length;
+    }
+  }
+
+  function listen() {
+    return addListener(arguments, POST_COMMIT);
+  }
+
+  listen.pre = function(){
+    return addListener(arguments, PRE_COMMIT);
+  };
+
+  merge(get, {
+
+    $root: root,
+    get: get,
+    listen: listen,
+
+    at(subpath){
+      return createReadOnlyView(root, path.concat(ensurePath(subpath)));
+    },
+
+    derive(fn) {
+      return createDerivedView(this, fn);
+    }
+
+  });
+
+  return get;
+}
+
+function createWritableView(root, path) {
+
+  var view = createReadOnlyView(root, path);
 
   function updateValue(updatePath, newValue) {
     if (typeof newValue === 'function') {
@@ -111,47 +150,8 @@ function createWorldView(root, path) {
     }
   }
 
-  merge(get, {
-
-    $root: root,
-
-    get: get,
-
-    listen() {
-      if (arguments.length === 1) {
-        var fn = arguments[0];
-        return root.addPostCommitListener(path, fn);
-      } else if (arguments.length === 2) {
-        var extraPath = ensurePath(arguments[0]);
-        var fn = arguments[1];
-        return root.addPostCommitListener(path.concat(extraPath), fn);
-      } else {
-        throw 'try listen(fn) or listen(path, fn)';
-      }
-    },
-
-
-    listenPre() {
-      if (arguments.length === 1) {
-        var fn = arguments[0];
-        return root.addPreCommitListener(path, fn);
-      } else if (arguments.length === 2) {
-        var extraPath = ensurePath(arguments[0]);
-        var fn = arguments[1];
-        return root.addPreCommitListener(path.concat(extraPath), fn);
-      } else {
-        throw 'try listen(fn) or listen(path, fn)';
-      }
-    },
-
-    at(subpath){
-      return createWorldView(root, path.concat(ensurePath(subpath)));
-    },
-
-    derive(fn) {
-      return createDerivedView(this, fn);
-    },
-
+  merge(view,{
+    
     update() {
       if (arguments.length === 1) {
         var newValue = arguments[0];
@@ -171,12 +171,18 @@ function createWorldView(root, path) {
       } else if (arguments.length === 1) {
         var extraPath = ensurePath(arguments[0]);
         updateValue(path.concat(extraPath), undefined);
+      } else {
+        throw 'try clear() or clear(path)'
       }
+    },
+
+    writableAt(subpath){
+      return createWritableView(root, path.concat(ensurePath(subpath)));
     }
 
   });
 
-  return get;
+  return view;
 }
 
 function createDerivedView(view, fn) {
@@ -188,7 +194,7 @@ function createDerivedView(view, fn) {
   var postCommitListeners = [];
 
   update(view());
-  view.listenPre(update);
+  view.listen.pre(update);
 
   function get() {
     return currentValue;
@@ -203,7 +209,8 @@ function createDerivedView(view, fn) {
     });
   }
 
-  function addListener(fn, list) {
+  function addListener(fn, type) {
+    var list = type === PRE_COMMIT ? preCommitListeners : postCommitListeners;
     list.push(fn);
     return () => {
       var idx = list.indexOf(fn);
@@ -212,20 +219,18 @@ function createDerivedView(view, fn) {
     };
   }
 
+  function listen(fn) {
+    return addListener(fn, POST_COMMIT);
+  }
+
+  listen.pre = fn => addListener(fn, PRE_COMMIT);
+
   merge(get, {
 
     $root: root,
-
     get: get,
-    
-    listen(fn) {
-      return addListener(fn, postCommitListeners);
-    },
+    listen: listen,
 
-    listenPre(fn) {
-      return addListener(fn, preCommitListeners);
-    },
-    
     derive(fn) {
       return createDerivedView(get, fn);
     }
@@ -239,7 +244,7 @@ const schedule = findScheduler();
 
 const DEFAULT_WORLD = new World();
 
-export default createWorldView(DEFAULT_WORLD, []);
+export default createWritableView(DEFAULT_WORLD, []);
 
 function findScheduler() {
   var scheduler;
@@ -354,18 +359,21 @@ function removeInTree(obj, path, key, val, checkedPath) {
 function triggerListeners(previous, current, listeners, path) {
   if (!path) path = [];
   if (current !== previous) {
-    var currentIsObject = typeof current === 'object';
-    var previousIsObject = typeof previous === 'object';
     if (listeners.hasOwnProperty('$$')) {
       listeners.$$.forEach(fn => {
         fn(current, previous, fn.$$unlisten);
       });
     }
-    Object.keys(listeners).forEach(k => {
-      triggerListeners(previousIsObject ? previous[k] : undefined,
-                       currentIsObject ? current[k] : undefined,
-                       listeners[k],
-                       path.concat([k]));
+    var keys = Object.keys(listeners);
+    if (keys.length > 0) {
+      var currentIsObject = typeof current === 'object';
+      var previousIsObject = typeof previous === 'object';
+      keys.forEach(k => {
+        triggerListeners(previousIsObject ? previous[k] : undefined,
+                         currentIsObject ? current[k] : undefined,
+                         listeners[k],
+                         path.concat([k]));
+      }
     });
   }
 }

@@ -51,7 +51,7 @@ describe('world', function(){
   });
 
   it('can chain lots of world views', function(done){
-    var things = world.at('this').at('or').at('that').at('wooo');
+    var things = world.writableAt('this').writableAt('or').writableAt('that').writableAt('wooo');
     var unlisten = things.listen(function(val) {
       unlisten();
       assert.equal(val, 'my value');
@@ -73,7 +73,7 @@ describe('world', function(){
   });
 
   it('update atomically by function', function(done){
-    var num = world.at('num');
+    var num = world.writableAt('num');
     var unlisten = num.listen(function(n){
       unlisten();
       assert.equal(n, 3);
@@ -87,7 +87,7 @@ describe('world', function(){
   });
 
   it('can update via function without previous value', function(done){
-    var val = world.at('this.can.be.anything');
+    var val = world.writableAt('this.can.be.anything');
     var unlisten = val.listen(function(v){
       unlisten();
       assert.equal(v, 'the value');
@@ -116,39 +116,43 @@ describe('world', function(){
     world.update('root can be a string!');
   });
 
-  it('you can derive values', function(done){
+  describe('derived', function(){
 
-    var view = world.at('a.nice.path');
+    it('you can derive values', function(done){
 
-    var boo = view.derive(function(value){
-      if (value === undefined) return;
-      return 'we did something to [' + value + ']';
+      var view = world.writableAt('a.nice.path');
+
+      var boo = view.derive(function(value){
+        if (value === undefined) return;
+        return 'we did something to [' + value + ']';
+      });
+
+      var boo2 = boo.derive(function(value){
+        return 'even more: ' + value;
+      });
+
+      assert.equal(boo(), undefined);
+      assert.equal(boo2(), 'even more: undefined');
+
+      world.listen(function(current, previous, unlisten){
+        unlisten();
+        assert.equal(current.a.nice.path, 'val');
+        assert.equal(boo(), 'we did something to [val]');
+        assert.equal(boo2(), 'even more: ' + boo());
+        done();
+      });
+
+      var first = true;
+      world.listen('a.nice.path', function(value){
+        if (first) {
+          assert.equal(value, 'val');
+        }
+        first = false;
+      });
+
+      view.update('val');
     });
 
-    var boo2 = boo.derive(function(value){
-      return 'even more: ' + value;
-    });
-
-    assert.equal(boo(), undefined);
-    assert.equal(boo2(), 'even more: undefined');
-
-    world.listen(function(current, previous, unlisten){
-      unlisten();
-      assert.equal(current.a.nice.path, 'val');
-      assert.equal(boo(), 'we did something to [val]');
-      assert.equal(boo2(), 'even more: ' + boo());
-      done();
-    });
-
-    var first = true;
-    world.listen('a.nice.path', function(value){
-      if (first) {
-        assert.equal(value, 'val');
-      }
-      first = false;
-    });
-
-    view.update('val');
   });
 
 });
