@@ -1,6 +1,7 @@
 
 const PRE_COMMIT = new Object();
 const POST_COMMIT = new Object();
+const LIST_EMPTY = new Object();
 
 class World {
 
@@ -213,9 +214,7 @@ function createDerivedView(view, fn) {
     var list = type === PRE_COMMIT ? preCommitListeners : postCommitListeners;
     list.push(fn);
     return () => {
-      var idx = list.indexOf(fn);
-      if (idx === -1) return;
-      list.splice(idx, 1);
+      listRemove(list, fn);
     };
   }
 
@@ -273,6 +272,13 @@ function ensurePath(path, copy) {
   } else {
     return path;
   }
+}
+
+function listRemove(list, item) {
+  var idx = list.indexOf(item);
+  if (idx === -1) return;
+  list.splice(idx, 1);
+  if (list.length === 0) return LIST_EMPTY;
 }
 
 function getIn(obj, path, checkedPath) {
@@ -338,11 +344,7 @@ function removeInTree(obj, path, key, val, checkedPath) {
   if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) {
     if (obj.hasOwnProperty(key)) {
-      var idx = obj[key].indexOf(val);
-      if (idx === -1) return;
-      var ary = obj[key];
-      ary.splice(idx, 1);
-      if (ary.length === 0) {
+      if (listRemove(obj[key], val) === LIST_EMPTY)) {
         delete obj[key];
         return true;
       }
