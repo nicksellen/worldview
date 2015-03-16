@@ -81,6 +81,6 @@ It's not published yet, but you can grab an es5 version from the build dir. Brow
 Or run it in node (from the project dir):
 
 ````javascript
-var require('./build/worldview');
+var world = require('./build/worldview');
 // ... etc
 ````
