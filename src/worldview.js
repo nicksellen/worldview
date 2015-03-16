@@ -129,24 +129,24 @@ function createWritableView(root, path) {
 
   var view = createReadOnlyView(root, path);
 
-  function updateValue(updatePath, newValue) {
-    if (typeof newValue === 'function') {
-      var fn = newValue;
+  function updateValue(updatePath, updateValue) {
+    if (typeof updateValue === 'function') {
+      var fn = updateValue;
       if (fn.length === 0) {
-        root.scheduleUpdate(state => setIn(state, updatePath, fn()));
+        root.scheduleUpdate(state => updateIn(state, updatePath, fn()));
       } else {
-        // wants the previous value passed
+        // the fn wants the previous state value passed in
         root.scheduleUpdate(state => {
           var stateValue = getIn(state, updatePath);
-          var newValue = fn(stateValue);
-          if (newValue !== stateValue) {
-            return setIn(state, updatePath, newValue); 
+          var updateValue = fn(stateValue);
+          if (updateValue !== stateValue) {
+            return updateIn(state, updatePath, updateValue); 
           }
           return state;
         });
       }
     } else {
-      root.scheduleUpdate(state => setIn(state, updatePath, newValue));
+      root.scheduleUpdate(state => updateIn(state, updatePath, updateValue));
     }
   }
 
@@ -154,12 +154,12 @@ function createWritableView(root, path) {
     
     update() {
       if (arguments.length === 1) {
-        var newValue = arguments[0];
-        updateValue(path, newValue);
+        var updateValue = arguments[0];
+        updateValue(path, updateValue);
       } else if (arguments.length === 2) {
         var extraPath = ensurePath(arguments[0]);
-        var newValue = arguments[1];
-        updateValue(path.concat(extraPath), newValue);
+        var updateValue = arguments[1];
+        updateValue(path.concat(extraPath), updateValue);
       } else {
         throw 'try update(value) or update(path, value)';
       }
@@ -284,7 +284,7 @@ function getIn(obj, path, checkedPath) {
   }
 }
 
-function setIn(obj, path, val, checkedPath) {
+function updateIn(obj, path, val, checkedPath) {
   if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return val;
   if (path.length === 1) {
@@ -300,7 +300,7 @@ function setIn(obj, path, val, checkedPath) {
   } else {
     var k = path.shift();
     var nextObj = obj.hasOwnProperty(k) ? obj[k] : {};
-    var updatedNextObj = setIn(nextObj, path, val, true);
+    var updatedNextObj = updateIn(nextObj, path, val, true);
     if (updatedNextObj !== nextObj) {
       obj = copy(obj);
       obj[k] = updatedNextObj;
