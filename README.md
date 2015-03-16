@@ -5,12 +5,13 @@ A small library for managing a nested global state object with listeners.
 * uses global immutable data structure to hold state
 * uses dot notation to refer to nested path (e.g. 'things.like.this')
 * batches update using requestAnimationFrame/setImmediate/setTimeout
-* supports atomic updates by passing a function
-* supports read-only cursors, and writable cursors
-* supports compound cursors
-* supports derived value cursors
+* atomic updates by passing a function
+* read-only cursors
+* writable cursors
+* compound cursors
+* derived values with function
 * cursor/compound/derived values can be nested arbitarily (hopefully)
-* can efficiently listen for updates on any kind of value
+* can efficiently listen for changes on any of the above
 * works in browser or in node/io
 * written in es6, babel'd to es5
 * exploratory/experimental state, do not use for anything real...
@@ -42,14 +43,15 @@ var peter = world.at('people.peter');
 var nickAndPeter = world.compound({ a: nick, b: peter });
 
 var derived = nickAndPeter.derive(function(obj){
-  // it will be passed { a: undefined, b: undefined } at the beginning...
+  // it will be initialized with { a: undefined, b: undefined }
+  // I'm not sure if this is a good thing or not
   if (obj.a && obj.b) {
     return 'nick is ' + obj.a.age + ' and peter is ' + obj.b.age;
   }
 });
 
 // these will get called whenever people.nick or people.peter changes
-// after having been run through the derivation function about
+// after having been run through the derivation function above
 derived.listen(function(status){
   console.log('status:', status);
 });
