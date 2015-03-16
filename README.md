@@ -14,6 +14,7 @@ A small library for managing a nested global state object with listeners.
 * can efficiently listen for changes on any of the above
 * works in browser or in node/io
 * written in es6, babel'd to es5
+* no dependencies
 * exploratory/experimental state, do not use for anything real...
 
 ## Examples
