@@ -61,7 +61,7 @@ describe('world', function(){
   });
 
   it('updates are batched', function(done){
-    var unlisten = world.listen(function(data){
+    world.listen(function(data, prev, unlisten){
       unlisten();
       // both changed values are passed in on the first callback
       assert.equal(data.a, 'a value');
@@ -116,4 +116,46 @@ describe('world', function(){
     world.update('root can be a string!');
   });
 
-})
+  it('does some stuff', function(done){
+
+    var view = world.at('a.nice.path');
+
+    var boo = calc(view, function(value){
+      console.log('calculating sthing');
+      if (value === undefined) return;
+      return 'we did something to [' + value + ']';
+    });
+    assert.equal(boo(), undefined);
+
+    world.listen(function(current, previous, unlisten){
+      console.log('AAA world listening', current, previous, boo());
+      unlisten();
+      assert.equal(current.a.nice.path, 'val');
+      //assert.equal(boo(), 'we did something to [val2]');
+      done();
+    });
+
+    world.listen('a.nice.path', function(value){
+      console.log('view set to', value);
+    });
+
+    //world.update('a.nice.path', 'val');
+    view.update('val');
+  });
+
+});
+
+function calc(view, fn) {
+  var currentValue = set(view());
+  view.listen1(function(value){
+    console.log('view listen', value);
+    set(value);
+  });
+  function set(value) {
+    currentValue = fn(value);
+    console.log('updated calc with', value, 'to', currentValue);
+  }
+  return function(){
+    return currentValue;
+  };
+}

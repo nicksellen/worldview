@@ -3,33 +3,32 @@ class World {
 
   constructor() {
     this.STATE = {};
-    this.pendingMutations = [];
+    this.pendingUpdates = [];
     this.updating = false;
     this.scheduled =  false;
-    this.pathListeners = [];
-    this.pathListenersTree = {};
+    this.listeners = {};
     this.pathValues = {};
     this.afters = [];
   }
 
-  scheduleMutation(fn) {
-    this.pendingMutations.push(fn);
+  scheduleUpdate(fn) {
+    this.pendingUpdates.push(fn);
     if (!this.scheduled) {
       this.scheduled = true;
-      schedule(this.runMutations.bind(this));
+      schedule(this.applyUpdates.bind(this));
     }
   }
 
-  runMutations() {
+  applyUpdates() {
     this.scheduled = false;
     this.updating = true;
     try {
-      if (this.pendingMutations.length > 0) {
-        var mutations = this.pendingMutations;
-        this.pendingMutations = [];
+      if (this.pendingUpdates.length > 0) {
+        var updates = this.pendingUpdates;
+        this.pendingUpdates = [];
         var NEXT_STATE = this.STATE;
 
-        mutations.forEach(fn => {
+        updates.forEach(fn => {
           NEXT_STATE = fn(NEXT_STATE);
         });
 
@@ -40,7 +39,7 @@ class World {
         if (NEXT_STATE !== this.STATE) {
           var PREVIOUS_STATE = this.STATE;
           this.STATE = NEXT_STATE;
-          triggerListeners(PREVIOUS_STATE, this.STATE, this.pathListenersTree);
+          triggerListeners(PREVIOUS_STATE, this.STATE, this.listeners);
           this.afters.forEach(fn => fn(this.STATE));
         }
 
@@ -51,20 +50,12 @@ class World {
   }
 
   addPathListener(path, fn) {
-    pushInTree(this.pathListenersTree, path, '$$', fn);
-    return () => {
-      removeInTree(this.pathListenersTree, path, '$$', fn);
-      /* not ready yet
-      console.log('b4 cleanup', this.pathListenersTree);
-      cleanupInTree(this.pathListenersTree, path);
-      console.log('after', this.pathListenersTree);
-      */
+    pushInTree(this.listeners, path, '$$', fn);
+    var unlisten = () => {
+      removeInTree(this.listeners, path, '$$', fn);
     };
-  }
-
-  removePathListener(path, fn) {
-    removeInTree(this.pathListenersTree, path, '$$', fn);
-    return;
+    fn.$$unlisten = unlisten;
+    return unlisten;
   }
 
   after(fn, sendInitial) {
@@ -97,10 +88,10 @@ function createWorldView(root, path) {
     if (typeof newValue === 'function') {
       var fn = newValue;
       if (fn.length === 0) {
-        root.scheduleMutation(state => setIn(state, updatePath, fn()));
+        root.scheduleUpdate(state => setIn(state, updatePath, fn()));
       } else {
         // wants the previous value passed
-        root.scheduleMutation(state => {
+        root.scheduleUpdate(state => {
           var stateValue = getIn(state, updatePath);
           var newValue = fn(stateValue);
           if (newValue !== stateValue) {
@@ -110,7 +101,7 @@ function createWorldView(root, path) {
         });
       }
     } else {
-      root.scheduleMutation(state => setIn(state, updatePath, newValue));
+      root.scheduleUpdate(state => setIn(state, updatePath, newValue));
     }
   }
 
@@ -204,13 +195,12 @@ function ensurePath(path, copy) {
 }
 
 function getIn(obj, path, checkedPath) {
-  if (obj === undefined) return undefined;
+  if (obj === undefined) return;
   if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return obj;
   if (obj instanceof Object) {
     return getIn(obj[path.shift()], path, true);
   }
-  return undefined;
 }
 
 function setIn(obj, path, val, checkedPath) {
@@ -262,46 +252,44 @@ function pushInTree(obj, path, key, val) {
   obj[key].push(val);
 }
 
-function removeInTree(obj, path, key, val) {
- var obj = getIn(obj, path);
-  if (typeof obj === 'object' && obj.hasOwnProperty(key)) {
-    var idx = obj[key].indexOf(val);
-    if (idx === -1) return;
-    var ary = obj[key];
-    ary.splice(idx, 1);
-    if (ary.length === 0) {
-      delete obj[key];
-    }
-  } 
-}
-
-// doesn't really work yet
-function cleanupInTree(obj, path, checkedPath) {
+function removeInTree(obj, path, key, val, checkedPath) {
+  if (typeof obj !== 'object') return;
   if (!checkedPath) path = ensurePath(path, true);
-  if (path.length === 0) return;
+  if (path.length === 0) {
+    if (obj.hasOwnProperty(key)) {
+      var idx = obj[key].indexOf(val);
+      if (idx === -1) return;
+      var ary = obj[key];
+      ary.splice(idx, 1);
+      if (ary.length === 0) {
+        delete obj[key];
+        return true;
+      }
+    }
+  };
   var k = path.shift();
-  var nextObj = obj[k];
-  cleanupInTree(nextObj, path, true);
-  if (Object.keys(nextObj).length === 0) {
+  if (removeInTree(obj[k], path, key, val, true)) {
     delete obj[k];
+    return Object.keys(obj).length === 0;
   }
+  return false;
 }
 
 function triggerListeners(previous, current, listeners, path) {
   if (!path) path = [];
-  if (previous !== current) {
-    var previousIsObject = typeof previous === 'object';
+  if (current !== previous) {
     var currentIsObject = typeof current === 'object';
+    var previousIsObject = typeof previous === 'object';
     if (listeners.hasOwnProperty('$$')) {
       listeners.$$.forEach(fn => {
-        fn(current, previous);
+        fn(current, previous, fn.$$unlisten);
       });
     }
     Object.keys(listeners).forEach(k => {
       triggerListeners(previousIsObject ? previous[k] : undefined,
-                    currentIsObject ? current[k] : undefined,
-                    listeners[k],
-                    path.concat([k]));
+                       currentIsObject ? current[k] : undefined,
+                       listeners[k],
+                       path.concat([k]));
     });
   }
 }
