@@ -123,7 +123,6 @@ describe('root', function(){
       var view = root.at('a.nice.path');
 
       var boo = view.derive(function(value){
-        //if (value === undefined) return;
         return 'we did something to [' + value + ']';
       });
 
