@@ -211,7 +211,12 @@ function createCompoundView(world, specs) {
 
   var keys = Object.keys(specs);
 
-  var values = createInitialValues();
+  var values = {};
+
+  keys.forEach(k => {
+    values[k] = undefined;
+  });
+
   var oldValues;
 
   var i = 0;
@@ -229,7 +234,7 @@ function createCompoundView(world, specs) {
         updated = true;
 
         oldValues = values;
-        values = createInitialValues();
+        values = copy(values);
 
         if (preCommitListeners.length > 0) {
           world.beforeCommit(() => {
@@ -253,14 +258,6 @@ function createCompoundView(world, specs) {
     });
 
   });
-
-  function createInitialValues() {
-    var obj = {};
-    keys.forEach(k => {
-      obj[k] = undefined;
-    });
-    return obj;
-  }
 
   function get() {
     return values;
