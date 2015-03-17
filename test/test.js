@@ -123,7 +123,7 @@ describe('root', function(){
       var view = root.at('a.nice.path');
 
       var boo = view.derive(function(value){
-        if (value === undefined) return;
+        //if (value === undefined) return;
         return 'we did something to [' + value + ']';
       });
 
@@ -132,7 +132,7 @@ describe('root', function(){
       });
 
       assert.equal(boo(), undefined);
-      assert.equal(boo2(), 'even more: undefined');
+      assert.equal(boo2(), undefined);
 
       root.listen(function(current, previous, unlisten){
         unlisten();

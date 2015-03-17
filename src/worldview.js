@@ -227,7 +227,7 @@ function createCompoundView(world, specs) {
 
     view.listen.pre(val => {
 
-      if (!updated) {
+      if (!updated && values[k] !== val) {
 
         // ok, at least one of the things updated...
 
@@ -309,7 +309,10 @@ function createDerivedView(view, fn) {
   var preCommitListeners = [];
   var postCommitListeners = [];
 
-  update(view());
+  var v = view();
+  if (v !== undefined) {
+    update(v);
+  }
   view.listen.pre(update);
 
   function get() {
@@ -323,13 +326,15 @@ function createDerivedView(view, fn) {
     // hence needing to store these update values outside
     // the fn
 
-    previousValue = currentValue;
     updatedValue = fn(value);
+
+    if (updatedValue === currentValue) return;
 
     preCommitListeners.forEach(fn => {
       fn(updatedValue, previousValue);
     });
-
+    
+    previousValue = currentValue;
     currentValue = updatedValue;
 
     if (!setAfterCommit) {
