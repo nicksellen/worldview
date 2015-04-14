@@ -1,11 +1,10 @@
 var gulp = require('gulp');
 var babel = require('gulp-babel');
 
-// for server
 gulp.task('build', function () {
   return gulp.src('src/worldview.js')
     .pipe(babel())
-    .pipe(gulp.dest('build')); 
+    .pipe(gulp.dest('lib')); 
 });
 
 gulp.task('default', ['build']);

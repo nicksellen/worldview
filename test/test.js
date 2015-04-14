@@ -2,7 +2,7 @@ var assert = require('assert')
 
 describe('root', function(){
 
-  var root = require('../build/worldview');
+  var root = require('../lib/worldview');
 
   afterEach(function(){
     root.clear();

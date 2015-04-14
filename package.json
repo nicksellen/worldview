@@ -2,12 +2,19 @@
   "name": "worldview",
   "version": "0.0.1",
   "description": "small library for managing nested global state object with listeners",
-  "author": "Nick Sellen",
+  "author": "Nick Sellen <git@nicksellen.co.uk>",
   "license": "MIT",
+  "main": "lib/worldview.js",
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "compile": "babel -d lib/ src/",
+    "prepublish": "npm run compile"
   },
-  "dependencies" : { },
+  "repository" : {
+    "type": "git",
+    "url" : "git@github.com:nicksellen/worldview.git"
+  },
+  "dependencies" : {},
   "devDependencies": {
     "babel": "^4.7.12",
     "gulp": "^3.8.11",
