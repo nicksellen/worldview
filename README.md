@@ -76,11 +76,11 @@ To achieve this the listeners are stored globally, this also means they can be c
 
 ## How to use it?
 
-It's not published yet, but you can grab an es5 version from the build dir. Browserify it (or similar) to use it in the browser. src/worldview.js is the es6 code.
-
-Or run it in node (from the project dir):
+````
+npm install worldview
+````
 
 ````javascript
-var world = require('./build/worldview');
+var world = require('worldview');
 // ... etc
 ````
