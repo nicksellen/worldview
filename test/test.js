@@ -99,6 +99,12 @@ describe('root', function(){
     });
   });
 
+  it('is possible to create a brand new empty world', function(){
+    var w = root.createWorld();
+    assert.equal(typeof w, 'function');
+    assert.equal(typeof w(),  'object');
+  });
+
   it('you can set root to just a normal value like a string', function(done){
     var unlisten = root.listen(function(data){
       unlisten();

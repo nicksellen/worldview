@@ -395,6 +395,9 @@ function createRoot(world) {
     return createCompoundView(world, specs);
 
   };
+  root.createWorld = function(){
+    return createRoot(new World());
+  };
   return root;
 }
 
