@@ -99,6 +99,14 @@ describe('root', function(){
     });
   });
 
+  it('gives root a create world function', function(){
+    assert.equal(typeof root.createWorld, 'function');
+  });
+
+  it('gives root a compound function', function(){
+    assert.equal(typeof root.compound, 'function');
+  });
+
   it('is possible to create a brand new empty world', function(){
     var w = root.createWorld();
     assert.equal(typeof w, 'function');
