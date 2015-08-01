@@ -517,6 +517,7 @@ function removeInTree(obj, path, key, val, checkedPath) {
 }
 
 function triggerListeners(previous, current, listeners, path) {
+  if (!listeners) return;
   if (!path) path = [];
   if (current !== previous) {
     if (listeners.hasOwnProperty('$$')) {
