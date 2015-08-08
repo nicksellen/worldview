@@ -527,8 +527,8 @@ function triggerListeners(previous, current, listeners, path) {
     }
     var keys = Object.keys(listeners);
     if (keys.length > 0) {
-      var currentIsObject = typeof current === 'object';
-      var previousIsObject = typeof previous === 'object';
+      var currentIsObject = current !== null && typeof current === 'object';
+      var previousIsObject = previous !== null && typeof previous === 'object';
       keys.forEach(k => {
         triggerListeners(previousIsObject ? previous[k] : undefined,
                          currentIsObject ? current[k] : undefined,
