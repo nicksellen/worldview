@@ -4,7 +4,7 @@ A small library for managing a nested global state object with listeners.
 
 * uses global immutable data structure to hold state
 * uses dot notation to refer to nested path (e.g. 'things.like.this')
-* batches update using requestAnimationFrame/setImmediate/setTimeout
+* batches updates using requestAnimationFrame/setImmediate/setTimeout
 * atomic updates by passing a function
 * read-only cursors
 * writable cursors
@@ -15,7 +15,7 @@ A small library for managing a nested global state object with listeners.
 * works in browser or in node/io
 * written in es6, babel'd to es5
 * no dependencies
-* exploratory/experimental state, do not use for anything real...
+* exploratory/experimental state, use cautiously in production
 
 ## Examples
 
