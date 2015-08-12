@@ -1,6 +1,6 @@
 {
   "name": "worldview",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "small library for managing nested global state object with listeners",
   "author": "Nick Sellen <git@nicksellen.co.uk>",
   "license": "MIT",

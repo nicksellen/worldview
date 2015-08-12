@@ -138,6 +138,10 @@ function createReadOnlyView(world, path) {
 
     derive(fn) {
       return createDerivedView(this, fn);
+    },
+
+    path() {
+      return path.join('.');
     }
 
   });

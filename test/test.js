@@ -295,5 +295,15 @@ describe('root', function(){
     });
   });
 
+  it('lets you access the path of the root', function(){
+    assert.equal(root.path(), '');
+  });
+
+  it('lets you access the path of the view', function(){
+    var path = 'something.inside.here';
+    var s = root.at(path);
+    assert.equal(s.path(), path);
+  });
+
 });
 
