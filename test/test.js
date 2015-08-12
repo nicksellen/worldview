@@ -247,5 +247,53 @@ describe('root', function(){
 
   });
 
+  it('can pass initial value on simple listen', function(done){
+    root.update('foo', 'I am foo');
+    root.next(function(){
+      root.at('foo').listen(function(foo, nothing, unlisten){
+        unlisten();
+        assert.equal(foo, 'I am foo');
+        done();
+      }, true);
+    });
+  });
+
+  it('can pass initial value on simple subpath listen', function(done){
+    root.update('foo', 'I am foo');
+    root.next(function(){
+      root.listen('foo', function(foo, nothing, unlisten){
+        unlisten();
+        assert.equal(foo, 'I am foo');
+        done();
+      }, true);
+    });
+  });
+
+  it('can pass initial value on compound listen', function(done){
+    root.update('foo', 'I am foo');
+    root.update('bar', 'I am bar');
+    root.next(function(){
+      root.compound({ foo: 'foo', bar: 'bar' }).listen(function(m, nothing, unlisten){
+        unlisten();
+        assert.equal(m.foo, 'I am foo');
+        assert.equal(m.bar, 'I am bar');
+        done();
+      }, true);
+    });
+  });
+
+  it('can pass initial value on derived listen', function(done){
+    root.update('foo', 'I am foo');
+    root.next(function(){
+      root.at('foo').derive(function(foo) {
+        return foo && foo.replace('am', 'was');
+      }).listen(function(foo, nothing, unlisten){
+        unlisten();
+        assert.equal(foo, 'I was foo');
+        done();
+      }, true);
+    });
+  });
+
 });
 

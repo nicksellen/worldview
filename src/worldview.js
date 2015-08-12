@@ -103,16 +103,19 @@ function createReadOnlyView(world, path) {
   }
 
   function addListener(args, type) {
-    if (args.length === 1) {
-      var fn = args[0];
-      return world.addListener(path, fn, type);
-    } else if (args.length === 2) {
-      var extraPath = ensurePath(args[0]);
-      var fn = args[1];
-      return world.addListener(path.concat(extraPath), fn, type);
-    } else {
-      throw 'this accepts 1 or 2 arguments, not ' + arguments.length;
+    var listenPath = path, i = 0, fn;
+    if (typeof args[i] === 'string') {
+      listenPath = listenPath.concat(ensurePath(args[i++]));
     }
+    if (typeof args[i] === 'function') {
+      fn = args[i++];
+    }
+    var initial = args[i++];
+    var unlisten = world.addListener(listenPath, fn, type);
+    if (initial) {
+      fn(getIn(world.STATE, listenPath), undefined, unlisten);
+    }
+    return unlisten;
   }
 
   function listen() {
@@ -263,12 +266,15 @@ function createCompoundView(world, specs) {
     return values;
   }
 
-  function listen(fn) {
+  function listen(fn, initial) {
     postCommitListeners.push(fn);
     function unlisten() {
       listRemove(postCommitListeners, fn);
     }
     fn.$$unlisten = unlisten;
+    if (initial) {
+      fn(get(), undefined, fn.$$unlisten);
+    }
     return unlisten;
   }
 
@@ -356,8 +362,12 @@ function createDerivedView(view, fn) {
     };
   }
 
-  function listen(fn) {
-    return addListener(fn, POST_COMMIT);
+  function listen(fn, initial) {
+    var unlisten = addListener(fn, POST_COMMIT);
+    if (initial) {
+      fn(get(), undefined, unlisten);
+    }
+    return unlisten;
   }
 
   listen.pre = fn => addListener(fn, PRE_COMMIT);
@@ -382,7 +392,13 @@ const schedule = findScheduler();
 const DEFAULT_WORLD = new World();
 
 function createRoot(world) {
+
   var root = createWritableView(world, []);
+
+  root.next = fn => {
+    world.afterCommit(fn);
+  };
+
   root.compound = function(specs){
 
     Object.keys(specs).forEach(k => {
@@ -395,9 +411,11 @@ function createRoot(world) {
     return createCompoundView(world, specs);
 
   };
+
   root.createWorld = function(){
     return createRoot(new World());
   };
+
   return root;
 }
 
