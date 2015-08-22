@@ -2,10 +2,13 @@ var assert = require('assert')
 
 describe('root', function(){
 
-  var root = require('../lib/worldview');
+  var root = require('../src/worldview');
 
-  afterEach(function(){
+  afterEach(function(done){
     root.clear();
+    root.next(function(){
+      done();
+    });
   });
 
   it('exists', function(){
@@ -28,12 +31,12 @@ describe('root', function(){
       assert.equal(root.at('k').get(), 'v');
 
       done();
-    });
+    }, false);
     root.update('k', 'v');
   });
 
   it('can listen at a property', function(done){
-    var unlisten = root.listen('something', function(val){
+    root.listen('something', function(val, previousVal, unlisten){
       unlisten();
       assert.equal(val, 'yay');
       done();
@@ -42,11 +45,11 @@ describe('root', function(){
   });
 
   it('can listen at root', function(done){
-    var unlisten = root.listen(function(data){
+    root.listen(function(data, previousData, unlisten){
       unlisten();
       assert.equal(data.deep.inside.root, 'bomp');
       done();
-    });
+    }, false);
     root.update('deep.inside.root', 'bomp');
   });
 
@@ -67,7 +70,7 @@ describe('root', function(){
       assert.equal(data.a, 'a value');
       assert.equal(data.b, 'b value');
       done();
-    });
+    }, false);
     root.update('a', 'a value');
     root.update('b', 'b value');
   });
@@ -110,23 +113,23 @@ describe('root', function(){
   it('is possible to create a brand new empty world', function(){
     var w = root.createWorld();
     assert.equal(typeof w, 'function');
-    assert.equal(typeof w(),  'object');
+    assert.equal(w(),  undefined);
   });
 
   it('you can set root to just a normal value like a string', function(done){
-    var unlisten = root.listen(function(data){
+    root.listen(function(data, previousData, unlisten){
       unlisten();
       assert.equal('root can be a string!', data);
 
       // second round
-      var unlisten2 = root.listen(function(data2){
+      root.listen(function(data2, previousData2, unlisten2){
         unlisten2();
         assert.equal(data2.backto, 'object again');
         done();
-      });
+      }, false);
       root.update({ backto: 'object again' });
 
-    });
+    }, false);
     root.update('root can be a string!');
   });
 
@@ -153,7 +156,7 @@ describe('root', function(){
         assert.equal(boo(), 'we did something to [val]');
         assert.equal(boo2(), 'even more: ' + boo());
         done();
-      });
+      }, false);
 
       var first = true;
       root.listen('a.nice.path', function(value){
@@ -215,16 +218,16 @@ describe('root', function(){
 
     var called = 0;
 
-    var unlistenc2 = c2.listen(function(omg){
+    c2.listen(function(omg, previousOmg, unlistenc2){
       unlistenc2();
       assert.equal(omg.d.a, 'a');
       assert.equal(omg.d.b, 'b');
       assert.equal(omg.d.c, 'added this in derive');
       assert.equal(omg.e, 'this is e');
       if (++called === 2) done();
-    });
+    }, false);
 
-    var unlisten = derived.listen(function(alltogether, previous){
+    derived.listen(function(alltogether, previous, unlisten){
       unlisten();
       var w = root();
       assert.equal(Object.keys(alltogether).length, 3);
@@ -239,7 +242,7 @@ describe('root', function(){
       assert.equal(derived().b, 'b');
       assert.equal(derived().c, 'added this in derive');
       if (++called === 2) done();
-    });
+    }, false);
 
     root.update('what.path.now', 'a');
     root.update('or.something.else', 'b');
@@ -247,51 +250,109 @@ describe('root', function(){
 
   });
 
-  it('can pass initial value on simple listen', function(done){
-    root.update('foo', 'I am foo');
+  it('calls listener with initial value', function(done){
+    root.update('foo', 'I am foo initial');
     root.next(function(){
+      root.update('foo', 'I am foo next');
       root.at('foo').listen(function(foo, nothing, unlisten){
         unlisten();
-        assert.equal(foo, 'I am foo');
+        assert.equal(foo, 'I am foo initial');
         done();
-      }, true);
+      });
     });
   });
 
-  it('can pass initial value on simple subpath listen', function(done){
-    root.update('foo', 'I am foo');
+  it('does not call listener with initial value', function(done){
+    root.update('foo', 'I am foo initial');
     root.next(function(){
+      root.update('foo', 'I am foo next');
+      root.at('foo').listen(function(foo, nothing, unlisten){
+        unlisten();
+        assert.equal(foo, 'I am foo next');
+        done();
+      }, false);
+    });
+  });
+
+  it('calls listener with initial value on subpath', function(done){
+    root.update('foo', 'I am foo initial');
+    root.next(function(){
+      root.update('foo', 'I am foo next');
       root.listen('foo', function(foo, nothing, unlisten){
         unlisten();
-        assert.equal(foo, 'I am foo');
+        assert.equal(foo, 'I am foo initial');
         done();
-      }, true);
+      });
     });
   });
 
-  it('can pass initial value on compound listen', function(done){
-    root.update('foo', 'I am foo');
-    root.update('bar', 'I am bar');
+  it('does not call listener with initial value on subpath', function(done){
+    root.update('foo', 'I am foo initial');
     root.next(function(){
+      root.update('foo', 'I am foo next');
+      root.listen('foo', function(foo, nothing, unlisten){
+        unlisten();
+        assert.equal(foo, 'I am foo next');
+        done();
+      }, false);
+    });
+  });
+
+  it('calls listener with initial value on compound listen', function(done){
+    root.update('foo', 'I am foo inital');
+    root.update('bar', 'I am bar inital');
+    root.next(function(){
+      root.update('foo', 'I am foo next');
+      root.update('bar', 'I am bar next');
       root.compound({ foo: 'foo', bar: 'bar' }).listen(function(m, nothing, unlisten){
         unlisten();
-        assert.equal(m.foo, 'I am foo');
-        assert.equal(m.bar, 'I am bar');
+        assert.equal(m.foo, 'I am foo inital');
+        assert.equal(m.bar, 'I am bar inital');
         done();
-      }, true);
+      });
     });
   });
 
-  it('can pass initial value on derived listen', function(done){
-    root.update('foo', 'I am foo');
+  it('does not call listener with initial value on compound listen', function(done){
+    root.update('foo', 'I am foo inital');
+    root.update('bar', 'I am bar inital');
     root.next(function(){
+      root.update('foo', 'I am foo next');
+      root.update('bar', 'I am bar next');
+      root.compound({ foo: 'foo', bar: 'bar' }).listen(function(m, nothing, unlisten){
+        unlisten();
+        assert.equal(m.foo, 'I am foo next');
+        assert.equal(m.bar, 'I am bar next');
+        done();
+      }, false);
+    });
+  });
+
+  it('calls listener with initial value on derived listen', function(done){
+    root.update('foo', 'I am foo initial');
+    root.next(function(){
+      root.update('foo', 'I am foo next');
       root.at('foo').derive(function(foo) {
         return foo && foo.replace('am', 'was');
       }).listen(function(foo, nothing, unlisten){
         unlisten();
-        assert.equal(foo, 'I was foo');
+        assert.equal(foo, 'I was foo initial');
         done();
-      }, true);
+      });
+    });
+  });
+
+  it('does not call listener with initial value on derived listen', function(done){
+    root.update('foo', 'I am foo initial');
+    root.next(function(){
+      root.update('foo', 'I am foo next');
+      root.at('foo').derive(function(foo) {
+        return foo && foo.replace('am', 'was');
+      }).listen(function(foo, nothing, unlisten){
+        unlisten();
+        assert.equal(foo, 'I was foo next');
+        done();
+      }, false);
     });
   });
 

@@ -6,7 +6,7 @@ const LIST_EMPTY = new Object();
 class World {
 
   constructor() {
-    this.STATE = {};
+    this.STATE = undefined;
     this.pendingUpdates = [];
     this.updating = false;
     this.scheduled =  false;
@@ -112,8 +112,11 @@ function createReadOnlyView(world, path) {
     }
     var initial = args[i++];
     var unlisten = world.addListener(listenPath, fn, type);
-    if (initial) {
-      fn(getIn(world.STATE, listenPath), undefined, unlisten);
+    if (initial !== false) {
+      let initialValue = getIn(world.STATE, listenPath);
+      if (initialValue !== undefined) {
+        fn(initialValue, undefined, unlisten);
+      }
     }
     return unlisten;
   }
@@ -276,8 +279,11 @@ function createCompoundView(world, specs) {
       listRemove(postCommitListeners, fn);
     }
     fn.$$unlisten = unlisten;
-    if (initial) {
-      fn(get(), undefined, fn.$$unlisten);
+    if (initial !== false) {
+      let initialValues = get();
+      if (Object.keys(initialValues).some(k => initialValues[k] !== undefined)) {
+        fn(initialValues, undefined, unlisten);
+      }
     }
     return unlisten;
   }
@@ -341,7 +347,7 @@ function createDerivedView(view, fn) {
     if (updatedValue === currentValue) return;
 
     preCommitListeners.forEach(fn => {
-      fn(updatedValue, previousValue);
+      fn(updatedValue, previousValue, fn.$$unlisten);
     });
     
     previousValue = currentValue;
@@ -350,7 +356,7 @@ function createDerivedView(view, fn) {
     if (!setAfterCommit) {
       setAfterCommit = true;
       world.afterCommit(() => {
-        postCommitListeners.forEach(fn => fn(updatedValue, previousValue));
+        postCommitListeners.forEach(fn => fn(updatedValue, previousValue, fn.$$unlisten));
         updatedValue = undefined;
         setAfterCommit = false;
       });
@@ -368,8 +374,12 @@ function createDerivedView(view, fn) {
 
   function listen(fn, initial) {
     var unlisten = addListener(fn, POST_COMMIT);
-    if (initial) {
-      fn(get(), undefined, unlisten);
+    fn.$$unlisten = unlisten;
+    if (initial !== false) {
+      let initialValue = get();
+      if (initialValue !== undefined) {
+        fn(initialValue, undefined, unlisten);
+      }
     }
     return unlisten;
   }
