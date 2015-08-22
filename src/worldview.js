@@ -45,10 +45,6 @@ class World {
           NEXT_STATE = fn(NEXT_STATE);
         });
 
-        if (NEXT_STATE === undefined) {
-          NEXT_STATE = {};
-        }
-
         if (NEXT_STATE !== this.STATE) {
 
           triggerListeners(this.STATE, NEXT_STATE, this.preCommitListeners);
@@ -64,12 +60,12 @@ class World {
 
           triggerListeners(PREVIOUS_STATE, this.STATE, this.postCommitListeners);
 
-          if (this.afterCommitFns.length > 0) {
-            var fns = this.afterCommitFns;
-            this.afterCommitFns = [];
-            fns.forEach(fn => fn(this.STATE));
-          }
-
+        }
+        
+        if (this.afterCommitFns.length > 0) {
+          var fns = this.afterCommitFns;
+          this.afterCommitFns = [];
+          fns.forEach(fn => fn(this.STATE));
         }
 
       }
@@ -483,6 +479,7 @@ function getIn(obj, path, checkedPath) {
 function updateIn(obj, path, val, checkedPath) {
   if (!checkedPath) path = ensurePath(path, true);
   if (path.length === 0) return val;
+  if (typeof obj !== 'object') obj = {};
   if (path.length === 1) {
     var k = path.shift();
     if (val !== obj[k]) {

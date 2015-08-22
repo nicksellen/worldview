@@ -2,7 +2,9 @@ var assert = require('assert')
 
 describe('root', function(){
 
-  var root = require('../src/worldview');
+  var root;
+  
+    root = require('../src/worldview');
 
   afterEach(function(done){
     root.clear();
@@ -15,14 +17,15 @@ describe('root', function(){
     assert(root, 'root is missing');
   })
 
-  it('is a function that returns an object', function(){
+  it('is a function that returns undefined', function(){
     assert.equal(typeof root, 'function');
-    assert.equal(typeof root(),  'object');
+    assert.equal(root(),  undefined);
   });
 
   it('you can update a value in it', function(done){
     var unlisten = root.listen(function(w){
       unlisten();
+      console.log('got root value from listen function', w);
       assert.equal(w.k, 'v');
 
       // too many ways to access it?
@@ -31,7 +34,7 @@ describe('root', function(){
       assert.equal(root.at('k').get(), 'v');
 
       done();
-    }, false);
+    });
     root.update('k', 'v');
   });
 
@@ -51,6 +54,15 @@ describe('root', function(){
       done();
     }, false);
     root.update('deep.inside.root', 'bomp');
+  });
+
+  it('when root state is undefined you can still update it', function(done){
+    root.clear();
+    root.next(function(){
+      console.log('root is', root());
+      assert.equal(root(), undefined);
+      done();
+    });
   });
 
   it('can chain lots of root views', function(done){
