@@ -7,7 +7,7 @@
   "main": "lib/worldview.js",
   "scripts": {
     "test": "mocha --compilers js:babel/register",
-    "compile": "babel -d lib/ src/",
+    "compile": "babel -d lib src --source-maps",
     "prepublish": "npm run compile"
   },
   "repository" : {
