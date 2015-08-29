@@ -273,7 +273,13 @@ function createCompoundView(world, specs) {
     }
     fn.$$unlisten = unlisten;
     if (initial !== false) {
-      fn(get(), undefined, unlisten);
+
+      let undefinedValues = {};
+      keys.forEach(k => {
+        undefinedValues[k] = undefined;
+      });
+
+      fn(get(), undefinedValues, unlisten);
     }
     return unlisten;
   }

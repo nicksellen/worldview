@@ -200,6 +200,22 @@ describe('root', function(){
     root.update('things.there', 'this is there');
   });
 
+  it('initialized compound previous value as an object with undefined values', function(done){
+    root.compound({
+      a: 'a',
+      b: 'b'
+    }).listen(function(current, previous, unlisten){
+      unlisten();
+      assert.equal(Object.keys(current).length, 2);
+      assert.equal(Object.keys(previous).length, 2);
+      assert.equal(current.a, undefined);
+      assert.equal(current.b, undefined);
+      assert.equal(previous.a, undefined);
+      assert.equal(previous.b, undefined);
+      done();
+    });
+  });
+
   it('you can derive values from compounds', function(done){
 
     var compound = root.compound({
