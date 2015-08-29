@@ -109,10 +109,7 @@ function createReadOnlyView(world, path) {
     var initial = args[i++];
     var unlisten = world.addListener(listenPath, fn, type);
     if (initial !== false) {
-      let initialValue = getIn(world.STATE, listenPath);
-      if (initialValue !== undefined) {
-        fn(initialValue, undefined, unlisten);
-      }
+      fn(getIn(world.STATE, listenPath), undefined, unlisten);
     }
     return unlisten;
   }
@@ -276,10 +273,7 @@ function createCompoundView(world, specs) {
     }
     fn.$$unlisten = unlisten;
     if (initial !== false) {
-      let initialValues = get();
-      if (Object.keys(initialValues).some(k => initialValues[k] !== undefined)) {
-        fn(initialValues, undefined, unlisten);
-      }
+      fn(get(), undefined, unlisten);
     }
     return unlisten;
   }
@@ -372,10 +366,7 @@ function createDerivedView(view, fn) {
     var unlisten = addListener(fn, POST_COMMIT);
     fn.$$unlisten = unlisten;
     if (initial !== false) {
-      let initialValue = get();
-      if (initialValue !== undefined) {
-        fn(initialValue, undefined, unlisten);
-      }
+      fn(get(), undefined, unlisten);
     }
     return unlisten;
   }

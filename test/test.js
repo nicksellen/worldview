@@ -23,9 +23,8 @@ describe('root', function(){
   });
 
   it('you can update a value in it', function(done){
-    var unlisten = root.listen(function(w){
+    root.listen(function(w, previousValue, unlisten){
       unlisten();
-      console.log('got root value from listen function', w);
       assert.equal(w.k, 'v');
 
       // too many ways to access it?
@@ -34,7 +33,7 @@ describe('root', function(){
       assert.equal(root.at('k').get(), 'v');
 
       done();
-    });
+    }, false);
     root.update('k', 'v');
   });
 
@@ -43,7 +42,7 @@ describe('root', function(){
       unlisten();
       assert.equal(val, 'yay');
       done();
-    });
+    }, false);
     root.update('something', 'yay');
   });
 
@@ -59,9 +58,12 @@ describe('root', function(){
   it('when root state is undefined you can still update it', function(done){
     root.clear();
     root.next(function(){
-      console.log('root is', root());
       assert.equal(root(), undefined);
-      done();
+      root.update('now.it.has', 'a value');
+      root.next(function(){
+        assert.equal(root('now.it.has'), 'a value');
+        done();
+      });
     });
   });
 
@@ -71,7 +73,7 @@ describe('root', function(){
       unlisten();
       assert.equal(val, 'my value');
       done();
-    });
+    }, false);
     things.update('my value');
   });
 
@@ -94,7 +96,7 @@ describe('root', function(){
       assert.equal(n, 3);
       assert.equal(num(), 3);
       done();
-    });
+    }, false);
     num.update(0);
     num.update(function(n){ return n + 1; });
     num.update(function(n){ return n + 1; });
@@ -107,7 +109,7 @@ describe('root', function(){
       unlisten();
       assert.equal(v, 'the value');
       done();
-    });
+    }, false);
     val.update(function(){
       assert(arguments.length === 0); // doesn't pass in old value if we don't specify arg
       return 'the value';
@@ -159,8 +161,8 @@ describe('root', function(){
         return 'even more: ' + value;
       });
 
-      assert.equal(boo(), undefined);
-      assert.equal(boo2(), undefined);
+      assert.equal(boo(), 'we did something to [undefined]');
+      assert.equal(boo2(), 'even more: we did something to [undefined]');
 
       root.listen(function(current, previous, unlisten){
         unlisten();
@@ -169,14 +171,6 @@ describe('root', function(){
         assert.equal(boo2(), 'even more: ' + boo());
         done();
       }, false);
-
-      var first = true;
-      root.listen('a.nice.path', function(value){
-        if (first) {
-          assert.equal(value, 'val');
-        }
-        first = false;
-      });
 
       root.update('a.nice.path', 'val');
     });
@@ -200,7 +194,7 @@ describe('root', function(){
       assert.equal(getVals.a, 'this is here');
       assert.equal(getVals.b, 'this is there');
       done();
-    });
+    }, false);
 
     root.update('things.here', 'this is here');
     root.update('things.there', 'this is there');
